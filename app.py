@@ -1,476 +1,234 @@
 import streamlit as st
-import requests
-from datetime import datetime
+import pandas as pd
+from data import DEMO_WEATHER_DATA
+from engine import get_user_type_advice, answer_question
 
+# --------------------------------------------------
+# Page Setup
+# --------------------------------------------------
 st.set_page_config(
-    page_title="VayuVani",
-    page_icon="🌦️",
+    page_title="VayuVani - Weather Information",
+    page_icon="⛅",
     layout="wide"
 )
 
-# -----------------------------
-# Weather descriptions
-# -----------------------------
-
-def weather_description(code):
-    data = {
-        0: "Clear sky",
-        1: "Mainly clear",
-        2: "Partly cloudy",
-        3: "Overcast",
-        45: "Fog",
-        48: "Fog",
-        51: "Light drizzle",
-        53: "Drizzle",
-        55: "Heavy drizzle",
-        61: "Light rain",
-        63: "Rain",
-        65: "Heavy rain",
-        71: "Light snow",
-        73: "Snow",
-        75: "Heavy snow",
-        80: "Rain showers",
-        81: "Rain showers",
-        82: "Heavy rain showers",
-        95: "Thunderstorm",
-        96: "Thunderstorm with hail",
-        99: "Thunderstorm with hail"
+# Custom Styling for clean, polished student weather app look
+st.markdown(
+    """
+    <style>
+    .main-header {
+        font-size: 2.2rem;
+        font-weight: 700;
+        color: #1E3A8A;
+        margin-bottom: 0.1rem;
     }
-
-    return data.get(code, "Unknown")
-
-
-# -----------------------------
-# Find location
-# -----------------------------
-
-def find_location(city):
-
-    url = "https://geocoding-api.open-meteo.com/v1/search"
-
-    params = {
-        "name": city,
-        "count": 1,
-        "language": "en",
-        "format": "json"
+    .sub-header {
+        font-size: 1.1rem;
+        color: #4B5563;
+        margin-bottom: 1rem;
     }
-
-    response = requests.get(
-        url,
-        params=params,
-        timeout=10
-    )
-
-    if response.status_code != 200:
-        return None
-
-    data = response.json()
-
-    if "results" not in data:
-        return None
-
-    result = data["results"][0]
-
-    return {
-        "name": result["name"],
-        "country": result.get("country", ""),
-        "latitude": result["latitude"],
-        "longitude": result["longitude"]
+    .demo-badge {
+        display: inline-block;
+        background-color: #EFF6FF;
+        color: #1D4ED8;
+        border: 1px solid #BFDBFE;
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        font-weight: 500;
+        margin-bottom: 1rem;
     }
-
-
-# -----------------------------
-# Get weather
-# -----------------------------
-
-def get_weather(latitude, longitude):
-
-    url = "https://api.open-meteo.com/v1/forecast"
-
-    params = {
-        "latitude": latitude,
-        "longitude": longitude,
-        "current": (
-            "temperature_2m,"
-            "relative_humidity_2m,"
-            "wind_speed_10m,"
-            "weather_code"
-        ),
-        "daily": (
-            "temperature_2m_max,"
-            "temperature_2m_min,"
-            "precipitation_probability_max,"
-            "weather_code"
-        ),
-        "forecast_days": 3,
-        "timezone": "auto"
+    .card {
+        background-color: #F8FAFC;
+        border: 1px solid #E2E8F0;
+        border-radius: 10px;
+        padding: 16px;
+        margin-bottom: 10px;
     }
-
-    response = requests.get(
-        url,
-        params=params,
-        timeout=10
-    )
-
-    if response.status_code != 200:
-        return None
-
-    return response.json()
-
-
-# -----------------------------
-# Query routing
-# -----------------------------
-
-def route_question(question):
-
-    question = question.lower()
-
-    advisory_words = [
-        "safe",
-        "safety",
-        "advice",
-        "advisory",
-        "warning",
-        "should i",
-        "what should",
-        "farmer",
-        "farming",
-        "crop",
-        "rain",
-        "flood",
-        "storm"
-    ]
-
-    for word in advisory_words:
-
-        if word in question:
-            return "Advisory"
-
-    return "Weather"
-
-
-# -----------------------------
-# Advisory
-# -----------------------------
-
-def get_advisory(weather):
-
-    rain = weather["daily"]["precipitation_probability_max"][0]
-    code = weather["current"]["weather_code"]
-
-    if code in [95, 96, 99]:
-
-        return (
-            "Thunderstorm conditions are possible. "
-            "Avoid unnecessary outdoor activity and "
-            "monitor local weather updates."
-        )
-
-    if rain >= 70:
-
-        return (
-            "High chance of rain. "
-            "Plan outdoor activities carefully "
-            "and keep rain protection ready."
-        )
-
-    if rain >= 40:
-
-        return (
-            "Rain is possible. "
-            "Keep necessary rain protection ready."
-        )
-
-    return (
-        "No major weather warning is detected "
-        "for the selected location."
-    )
-
-
-# -----------------------------
-# Farmer response
-# -----------------------------
-
-def farmer_advisory(weather):
-
-    rain = weather["daily"]["precipitation_probability_max"][0]
-
-    if rain >= 60:
-
-        return (
-            "వర్షం వచ్చే అవకాశం ఎక్కువగా ఉంది. "
-            "వ్యవసాయ పనులను వాతావరణ పరిస్థితులకు "
-            "అనుగుణంగా ప్లాన్ చేయండి."
-        )
-
-    if rain >= 30:
-
-        return (
-            "వర్షం వచ్చే అవకాశం ఉంది. "
-            "వ్యవసాయ పనులను జాగ్రత్తగా ప్లాన్ చేయండి."
-        )
-
-    return (
-        "వర్షం వచ్చే అవకాశం తక్కువగా ఉంది. "
-        "వ్యవసాయ పనులను సాధారణంగా ప్లాన్ చేయవచ్చు."
-    )
-
-
-# -----------------------------
-# Header
-# -----------------------------
-
-st.title("🌦️ VayuVani")
-st.write("Conversational Weather & Climate Information")
-
-st.divider()
-
-
-# -----------------------------
-# Sidebar
-# -----------------------------
-
-st.sidebar.header("Location")
-
-city = st.sidebar.text_input(
-    "Enter a city",
-    value="Hyderabad"
+    </style>
+    """,
+    unsafe_allow_html=True
 )
 
-st.sidebar.header("User")
+# --------------------------------------------------
+# Sidebar: Location, User Type & Demo Notice
+# --------------------------------------------------
+st.sidebar.markdown("## ⛅ VayuVani")
+st.sidebar.caption("Weather Information")
+st.sidebar.markdown("---")
 
-persona = st.sidebar.selectbox(
-    "Select user",
-    [
-        "General",
-        "Farmer"
-    ]
+locations = list(DEMO_WEATHER_DATA.keys())
+selected_location = st.sidebar.selectbox(
+    "Location",
+    options=locations,
+    index=0
 )
 
-st.sidebar.divider()
-
-st.sidebar.caption(
-    "Weather data: Open-Meteo"
+user_types = ["General User", "Farmer", "Fisherman", "Disaster Response"]
+selected_user_type = st.sidebar.selectbox(
+    "User Type",
+    options=user_types,
+    index=0
 )
 
-
-# -----------------------------
-# Get location
-# -----------------------------
-
-location = find_location(city)
-
-if location is None:
-
-    st.error(
-        "Location not found. Please enter a valid city."
-    )
-
-    st.stop()
-
-
-weather = get_weather(
-    location["latitude"],
-    location["longitude"]
+st.sidebar.markdown("---")
+st.sidebar.markdown(
+    """
+    **Demo weather data**  
+    This application uses local demonstration weather data for evaluation and testing.
+    """
 )
 
-if weather is None:
+# --------------------------------------------------
+# Load Location Weather Data
+# --------------------------------------------------
+city_data = DEMO_WEATHER_DATA[selected_location]
+current = city_data["current"]
+forecast = city_data["forecast"]
 
-    st.error(
-        "Weather data could not be retrieved."
+# --------------------------------------------------
+# Main Header
+# --------------------------------------------------
+col_title, col_badge = st.columns([3, 1])
+with col_title:
+    st.markdown('<div class="main-header">⛅ VayuVani</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-header">Weather Information</div>', unsafe_allow_html=True)
+with col_badge:
+    st.markdown(
+        "<div style='text-align: right; padding-top: 10px;'><span class='demo-badge'>Demo weather data</span></div>",
+        unsafe_allow_html=True
     )
 
-    st.stop()
+st.markdown("---")
 
+# --------------------------------------------------
+# Today's Weather
+# --------------------------------------------------
+st.subheader(f"Today's Weather — {selected_location}")
+st.caption(f"Observed condition: **{current['condition']}**")
 
-# -----------------------------
-# Current weather
-# -----------------------------
+m1, m2, m3, m4 = st.columns(4)
+with m1:
+    st.metric(label="Temperature", value=f"{current['temperature']} °C")
+with m2:
+    st.metric(label="Humidity", value=f"{current['humidity']} %")
+with m3:
+    st.metric(label="Wind", value=f"{current['wind_speed']} km/h")
+with m4:
+    st.metric(label="Rain Chance", value=f"{current['rain_probability']} %")
 
-st.subheader(
-    f"📍 {location['name']}, {location['country']}"
-)
+# Baseline Weather Advice for the selected user type
+advice = get_user_type_advice(city_data, selected_user_type)
+st.markdown(f"#### Weather Advice ({selected_user_type})")
+if advice["type"] == "warning":
+    st.warning(f"**{advice['title']}:** {advice['message']}")
+elif advice["type"] == "success":
+    st.success(f"**{advice['title']}:** {advice['message']}")
+else:
+    st.info(f"**{advice['title']}:** {advice['message']}")
 
-current = weather["current"]
+st.markdown("---")
 
-col1, col2, col3, col4 = st.columns(4)
-
-with col1:
-
-    st.metric(
-        "Temperature",
-        f"{current['temperature_2m']} °C"
-    )
-
-with col2:
-
-    st.metric(
-        "Humidity",
-        f"{current['relative_humidity_2m']}%"
-    )
-
-with col3:
-
-    st.metric(
-        "Wind",
-        f"{current['wind_speed_10m']} km/h"
-    )
-
-with col4:
-
-    rain = weather["daily"]["precipitation_probability_max"][0]
-
-    st.metric(
-        "Rain Chance",
-        f"{rain}%"
-    )
-
-
-st.write(
-    f"**Current condition:** "
-    f"{weather_description(current['weather_code'])}"
-)
-
-
-# -----------------------------
-# Forecast
-# -----------------------------
-
+# --------------------------------------------------
+# 3-Day Forecast
+# --------------------------------------------------
 st.subheader("3-Day Forecast")
+col_cards, col_chart = st.columns([3, 2])
 
-daily = weather["daily"]
+with col_cards:
+    f_cols = st.columns(3)
+    for i, day in enumerate(forecast):
+        with f_cols[i]:
+            with st.container(border=True):
+                st.markdown(f"**{day['day_label']}**")
+                st.caption(day["condition"])
+                st.write(f"🌡️ **{day['temp_min']}°C – {day['temp_max']}°C**")
+                st.write(f"🌧️ Rain Chance: **{day['rain_probability']}%**")
+                st.write(f"💨 Wind: **{day['wind_speed']} km/h**")
 
-forecast_cols = st.columns(3)
+with col_chart:
+    st.markdown("**Rain Chance (%)**")
+    chart_data = pd.DataFrame(
+        {"Rain Chance (%)": [d["rain_probability"] for d in forecast]},
+        index=[d["day_label"] for d in forecast]
+    )
+    st.bar_chart(chart_data, color="#3B82F6")
 
-for i in range(3):
+st.markdown("---")
 
-    date = datetime.fromisoformat(
-        daily["time"][i]
-    ).strftime("%d %b")
+# --------------------------------------------------
+# Ask a Question & Get Answer
+# --------------------------------------------------
+st.subheader("Ask a Question")
 
-    with forecast_cols[i]:
+# Initialize question in session state
+if "current_question" not in st.session_state:
+    st.session_state["current_question"] = ""
+if "answer_result" not in st.session_state:
+    st.session_state["answer_result"] = None
 
-        st.write(f"### {date}")
+# Example Questions tailored to the selected user type
+st.markdown("**Example Questions**")
+example_dict = {
+    "General User": [
+        "Will it rain today?",
+        "Do I need an umbrella?",
+        "Is it warm outside?"
+    ],
+    "Farmer": [
+        "Should I water my crops today?",
+        "Is it safe to spray fertilizer?",
+        "Will it rain tomorrow?"
+    ],
+    "Fisherman": [
+        "Is it safe to go out to sea?",
+        "How strong is the wind today?",
+        "What are the sea conditions tomorrow?"
+    ],
+    "Disaster Response": [
+        "Is there any flood risk?",
+        "Are there high wind alerts?",
+        "What is the severe weather outlook?"
+    ]
+}
 
-        st.write(
-            weather_description(
-                daily["weather_code"][i]
-            )
-        )
+current_examples = example_dict.get(selected_user_type, example_dict["General User"])
+ex_cols = st.columns(len(current_examples))
 
-        st.write(
-            f"🌡️ {daily['temperature_2m_min'][i]}°C - "
-            f"{daily['temperature_2m_max'][i]}°C"
-        )
+for idx, eg_text in enumerate(current_examples):
+    with ex_cols[idx]:
+        if st.button(eg_text, key=f"eg_btn_{idx}", use_container_width=True):
+            st.session_state["current_question"] = eg_text
+            st.session_state["answer_result"] = answer_question(city_data, selected_user_type, eg_text)
+            st.rerun()
 
-        st.write(
-            f"🌧️ "
-            f"{daily['precipitation_probability_max'][i]}% rain chance"
-        )
-
-
-st.divider()
-
-
-# -----------------------------
-# Question
-# -----------------------------
-
-st.subheader("💬 Ask VayuVani")
-
-question = st.text_input(
-    "Ask a weather question",
-    placeholder="Example: Will it rain tomorrow?"
+# Text input for manual question entry
+user_query = st.text_input(
+    "Enter your question:",
+    value=st.session_state.get("current_question", ""),
+    placeholder="e.g. Will it rain tomorrow?",
+    key="question_input"
 )
 
-if st.button("Get Answer"):
-
-    if question.strip() == "":
-
-        st.warning("Please enter a question.")
-
+if st.button("Get Answer", type="primary"):
+    if user_query.strip():
+        st.session_state["current_question"] = user_query.strip()
+        st.session_state["answer_result"] = answer_question(city_data, selected_user_type, user_query.strip())
     else:
+        st.warning("Please enter a question or select an example above.")
 
-        route = route_question(question)
-
-        st.write("### Query Route")
-
-        if route == "Weather":
-
-            st.success(
-                "LIVE WEATHER DATA"
-            )
-
+# Display Weather Advice / Answer
+if st.session_state.get("answer_result"):
+    ans = st.session_state["answer_result"]
+    st.markdown("#### Weather Advice")
+    with st.container(border=True):
+        st.markdown(f"**Question:** {ans['question']}")
+        if ans["status"] == "warning":
+            st.warning(ans["answer"])
+        elif ans["status"] == "success":
+            st.success(ans["answer"])
         else:
+            st.info(ans["answer"])
 
-            st.info(
-                "WEATHER ADVISORY"
-            )
-
-
-        # ---------------------
-        # Weather response
-        # ---------------------
-
-        if route == "Weather":
-
-            st.write("### Weather Information")
-
-            st.write(
-                f"The current weather in "
-                f"**{location['name']}** is "
-                f"**{weather_description(current['weather_code'])}** "
-                f"with a temperature of "
-                f"**{current['temperature_2m']} °C**."
-            )
-
-            st.write(
-                f"Today's rain probability is "
-                f"**{rain}%**."
-            )
-
-
-        # ---------------------
-        # Advisory response
-        # ---------------------
-
-        else:
-
-            st.write("### 🚨 Advisory")
-
-            st.info(
-                get_advisory(weather)
-            )
-
-
-        # ---------------------
-        # Farmer mode
-        # ---------------------
-
-        if persona == "Farmer":
-
-            st.write("### 🌾 Farmer View")
-
-            st.success(
-                farmer_advisory(weather)
-            )
-
-
-# -----------------------------
-# Example questions
-# -----------------------------
-
-st.divider()
-
-st.subheader("Try these questions")
-
-examples = [
-    "What is the weather today?",
-    "Will it rain tomorrow?",
-    "What should I do if heavy rain is expected?"
-]
-
-for example in examples:
-
-    st.write(f"• {example}")
+st.markdown("---")
+st.caption("VayuVani • Demo weather data")
